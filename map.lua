@@ -34,7 +34,6 @@ compatnamefake:SetScript("OnEvent", function()
       nodename = "GatherNoteCompatFake"
     end
   end
-
 end)
 
 -- checking for control key is very time expensive in 1.12
@@ -57,8 +56,18 @@ controlkey:SetScript("OnUpdate", function()
   end
 end)
 
-local mainmap_base_effective_scale = nil
-local mainmap_inversescale = 1.0
+-- mainmap_inversescale separates two distinct scale events on the world map:
+--   * MAP MODE change (windowed/questlist/fullmap): Blizzard scales BOTH
+--     WorldMapDetailFrame and WorldMapButton by WORLDMAP_SETTINGS.size.
+--     Their LOCAL scales stay equal -> ratio = 1 -> no compensation, pins
+--     scale naturally with the map.
+--   * ZOOM addons (Magnify): scale ONLY WorldMapDetailFrame while keeping
+--     WorldMapButton.local at 1 (Magnify reparents Button under DetailFrame).
+--     Local ratio diverges -> we compensate so pins keep a constant screen
+--     pixel size through the zoom.
+-- Formula: mainmap_inversescale = WorldMapButton:GetScale() / WorldMapDetailFrame:GetScale()
+-- Global (no `local`) so pfQuest-epoch's continent pins can read the same value.
+mainmap_inversescale = 1.0
 
 local validmaps = setmetatable({}, { __mode = "kv" })
 local rgbcache = setmetatable({}, { __mode = "kv" })
@@ -989,6 +998,7 @@ function pfMap:UpdateNode(frame, node, color, obj, distance)
       frame.updateVertex = (frame.vertex ~= tab.vertex)
       frame.updateColor = (frame.color ~= tab.color)
       frame.updateLayer = (frame.layer ~= tab.layer)
+      frame.updateIcon = (frame.icon ~= tab.icon)
 
       -- set title and texture to the entry with highest layer
       -- and add core information
@@ -1034,7 +1044,7 @@ function pfMap:UpdateNode(frame, node, color, obj, distance)
     end
   end
 
-  if (frame.updateColor or frame.updateTexture or not frame.tex:GetTexture()) and not frame.texture then
+  if (frame.updateColor or frame.updateTexture or frame.updateIcon or not frame.tex:GetTexture()) and not frame.texture then
     local r, g, b = str2rgb(frame.color)
 
     if (frame.title and pfQuest.icons[frame.title]) or frame.icon then
@@ -1072,7 +1082,7 @@ function pfMap:UpdateNode(frame, node, color, obj, distance)
     frame:SetFrameLevel((obj == "minimap" and 4 or 112) + frame.layer)
   end
 
-  if frame.updateTexture or frame.updateVertex or frame.updateColor or frame.updateLayer then
+  if frame.updateTexture or frame.updateVertex or frame.updateColor or frame.updateLayer or frame.updateIcon then
     frame:SetScript("OnClick", (frame.func or pfMap.NodeClick))
   end
 
@@ -1084,16 +1094,29 @@ end
 function pfMap:ResizeNode(frame, obj)
   local highlight = frame.texture and pfMap.highlightdb[frame][pfMap.highlight] and true or nil
   local target = frame.texture and pfQuest.route and pfQuest.route.IsTarget(frame) or nil
+  local isCluster = frame.cluster or frame.layer == 4
+  local isIcon = (frame.title and pfQuest.icons[frame.title]) or frame.icon
+  local isWorld = obj ~= "minimap"
 
-  -- set default sizes for different node types
-  frame.defsize = (frame.cluster or frame.layer == 4) and 18 or 14
+  -- Default sizes. Cluster pins stay at a fixed 18 so they remain visually
+  -- distinct. Minimap pins use the legacy fixed default. World-map regular
+  -- and utility (icon) pins read user-configurable sizes from the options
+  -- panel (defined in pfQuest-epoch alongside the continent equivalents).
+  if isCluster then
+    frame.defsize = 18
+  elseif isWorld and isIcon then
+    frame.defsize = tonumber(pfQuest_config["worldmapUtilityNodeSize"]) or 14
+  elseif isWorld then
+    frame.defsize = tonumber(pfQuest_config["worldmapNodeSize"]) or 14
+  else
+    frame.defsize = 14
+  end
 
-  -- Adjust node size if main map is zoomed in/out
-  if (obj ~= "minimap") then
-    if (frame.title and pfQuest.icons[frame.title]) or frame.icon then
-      -- Adjust for icons being 1 unit smaller than their parent frame
-      -- Looks better to keep the icon size constant even if the frame grows a bit.
-      frame.defsize = (frame.defsize - 2) * (mainmap_inversescale) + 2
+  -- Apply main-map zoom compensation only on the world map. Icons get a
+  -- 1 unit padding compensation so they don't shrink to nothing.
+  if isWorld then
+    if isIcon then
+      frame.defsize = (frame.defsize - 2) * mainmap_inversescale + 2
     else
       frame.defsize = frame.defsize * mainmap_inversescale
     end
@@ -1116,9 +1139,7 @@ end
 function pfMap:ResizeNodes()
   if pfMap.pins then
     for i = 1, table.getn(pfMap.pins) do
-      if pfMap.pins[i]:IsShown() then
-        pfMap:ResizeNode(pfMap.pins[i])
-      end
+      pfMap:ResizeNode(pfMap.pins[i])
     end
   end
 end
@@ -1570,25 +1591,40 @@ if compat.client >= 30300 then
   end
 end
 
--- Resize icons on map zoom change
+-- Recompute mainmap_inversescale from local scales when DetailFrame or
+-- Button is rescaled. Also keep WorldMapTooltip's scale in sync with the
+-- current map mode so Blizzard's tooltip (parent = WorldMapFrame, never
+-- scaled by the mode toggles) shrinks together with windowed/questlist mode.
 function pfMap:OnMapScaleChanged(frame, scale, hookedfunction)
-  if not mainmap_base_effective_scale then
-    mainmap_base_effective_scale = WorldMapButton:GetEffectiveScale() / WorldMapFrame:GetScale()
-  end
   hookedfunction(frame, scale)
-  local zoom_scale = WorldMapButton:GetEffectiveScale() / WorldMapFrame:GetScale()
-  local new_inversescale = mainmap_base_effective_scale / zoom_scale
-  if (mainmap_inversescale ~= new_inversescale) then
+
+  local dl = WorldMapDetailFrame:GetScale()
+  local bl = WorldMapButton and WorldMapButton:GetScale() or 0
+  if dl <= 0 or bl <= 0 then return end
+
+  local new_inversescale = bl / dl
+  if math.abs(new_inversescale - mainmap_inversescale) > 0.001 then
     mainmap_inversescale = new_inversescale
     pfMap:ResizeNodes()
   end
+
+  if WorldMapTooltip and WORLDMAP_SETTINGS then
+    local target = WORLDMAP_SETTINGS.size or 1.0
+    if math.abs(WorldMapTooltip:GetScale() - target) > 0.001 then
+      WorldMapTooltip:SetScale(target)
+    end
+  end
 end
--- Listen for WorldMapFrame scale changes
-local pfHookWorldMapFrame_SetScale = WorldMapFrame.SetScale
-WorldMapFrame.SetScale = function(frame, scale) pfMap:OnMapScaleChanged(frame, scale, pfHookWorldMapFrame_SetScale) end
--- Listen for WorldMapDetailFrame scale changes
+
+-- Hook DetailFrame and WorldMapButton scale changes. In 3.3.5 Blizzard's mode
+-- toggles (WorldMap_ToggleSizeDown/Up, SetFullMapView, SetQuestMapView, OnLoad)
+-- scale BOTH frames in sequence: DetailFrame:SetScale(x) then
+-- WorldMapButton:SetScale(x). After both fire, the local ratio is 1.0 (any
+-- stale intermediate ratio latched by the first hook is replaced by the
+-- second). Magnify scales DetailFrame independently while keeping
+-- WorldMapButton.local = 1, so the DetailFrame hook alone catches zoom.
 local pfHookWorldMapDetailFrame_SetScale = WorldMapDetailFrame.SetScale
 WorldMapDetailFrame.SetScale = function(frame, scale) pfMap:OnMapScaleChanged(frame, scale, pfHookWorldMapDetailFrame_SetScale) end
--- Listen for WorldMapButton scale changes
+
 local pfHookWorldMapButton_SetScale = WorldMapButton.SetScale
 WorldMapButton.SetScale = function(frame, scale) pfMap:OnMapScaleChanged(frame, scale, pfHookWorldMapButton_SetScale) end

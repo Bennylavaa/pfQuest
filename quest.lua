@@ -762,9 +762,18 @@ function pfQuest:AddWorldMapIntegration()
   end
 
   -- Quest Display Selection
-  pfQuest.mapButton = CreateFrame("Frame", "pfQuestMapDropdown", WorldMapButton, "UIDropDownMenuTemplate")
+  -- Parent + anchor to the visible map viewport so the dropdown stays pinned
+  -- to the top-right of the visible map AND scales with the map mode:
+  --   * default 3.3.5: WorldMapDetailFrame is the visible map area, scales
+  --     with WORLDMAP_SETTINGS.size (windowed=0.573, fullmap=1.0), doesn't pan.
+  --   * Magnify: it creates WorldMapScrollFrame as the clipped viewport,
+  --     reparents WorldMapDetailFrame inside it as a panned/scaled scroll
+  --     child. WorldMapScrollFrame scales with WORLDMAP_SETTINGS.size and
+  --     doesn't pan/zoom, so it's the safe anchor.
+  local mapAnchor = WorldMapScrollFrame or WorldMapDetailFrame
+  pfQuest.mapButton = CreateFrame("Frame", "pfQuestMapDropdown", mapAnchor, "UIDropDownMenuTemplate")
   pfQuest.mapButton:ClearAllPoints()
-  pfQuest.mapButton:SetPoint("TOPRIGHT", 0, -10)
+  pfQuest.mapButton:SetPoint("TOPRIGHT", mapAnchor, "TOPRIGHT", 0, -10)
   pfQuest.mapButton:SetScript("OnShow", function()
     pfQuest.mapButton.current = tonumber(pfQuest_config["trackingmethod"])
     pfQuest.mapButton:UpdateMenu()

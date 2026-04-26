@@ -774,6 +774,13 @@ function pfQuest:AddWorldMapIntegration()
   pfQuest.mapButton = CreateFrame("Frame", "pfQuestMapDropdown", mapAnchor, "UIDropDownMenuTemplate")
   pfQuest.mapButton:ClearAllPoints()
   pfQuest.mapButton:SetPoint("TOPRIGHT", mapAnchor, "TOPRIGHT", 0, -10)
+  -- Lift above WorldMapButton (Blizzard sets it to WORLDMAP_POI_FRAMELEVEL - 10
+  -- = 90 in WorldMapFrame_ResetFrameLevels). Without this, Magnify's
+  -- WorldMapButton OnMouseDown handler swallows clicks aimed at the dropdown
+  -- because WorldMapScrollFrame (created at .toc-load time, before WMF's
+  -- ResetFrameLevels) sits at a very low frame level, leaving its children
+  -- below WorldMapButton's 90.
+  pfQuest.mapButton:SetFrameLevel((WORLDMAP_POI_FRAMELEVEL or 100) + 2)
   pfQuest.mapButton:SetScript("OnShow", function()
     pfQuest.mapButton.current = tonumber(pfQuest_config["trackingmethod"])
     pfQuest.mapButton:UpdateMenu()
@@ -781,6 +788,19 @@ function pfQuest:AddWorldMapIntegration()
 
   pfQuest.mapButton.point = "TOPLEFT"
   pfQuest.mapButton.relativePoint = "BOTTOMLEFT"
+
+  -- One-time width/justify setup. Previously these lived inside UpdateMenu
+  -- and re-ran on every map show, which would overwrite the width that
+  -- ElvUI's HandleDropDownBox sets when it skins the dropdown.
+  if client >= 30300 then
+    UIDropDownMenu_SetWidth(pfQuest.mapButton, 120)
+    UIDropDownMenu_SetButtonWidth(pfQuest.mapButton, 125)
+    UIDropDownMenu_JustifyText(pfQuest.mapButton, "RIGHT")
+  else
+    UIDropDownMenu_SetWidth(120, pfQuest.mapButton)
+    UIDropDownMenu_SetButtonWidth(125, pfQuest.mapButton)
+    UIDropDownMenu_JustifyText("RIGHT", pfQuest.mapButton)
+  end
 
   function pfQuest.mapButton:UpdateMenu()
     local function CreateEntries()
@@ -836,16 +856,34 @@ function pfQuest:AddWorldMapIntegration()
     end
 
     UIDropDownMenu_Initialize(pfQuest.mapButton, CreateEntries)
-    if client >= 30300 then
-      UIDropDownMenu_SetWidth(pfQuest.mapButton, 120)
-      UIDropDownMenu_SetButtonWidth(pfQuest.mapButton, 125)
-      UIDropDownMenu_JustifyText(pfQuest.mapButton, "RIGHT")
-    else
-      UIDropDownMenu_SetWidth(120, pfQuest.mapButton)
-      UIDropDownMenu_SetButtonWidth(125, pfQuest.mapButton)
-      UIDropDownMenu_JustifyText("RIGHT", pfQuest.mapButton)
-    end
     UIDropDownMenu_SetSelectedID(pfQuest.mapButton, pfQuest.mapButton.current)
+  end
+
+  -- ElvUI skin: mirror ModernMapMarkers' approach. If ElvUI is loaded,
+  -- wait until its engine is initialized, then run S:HandleDropDownBox on
+  -- pfQuest's All-Quests dropdown so it matches MMM's filter/find dropdowns.
+  do
+    local function SkinDropdown(S)
+      if pfQuest.mapButton.backdrop then return end
+      S:HandleDropDownBox(pfQuest.mapButton, 134)
+    end
+
+    local function OnReady()
+      if not ElvUI then return end
+      local E = ElvUI[1]
+      if not E then return end
+      local S = E:GetModule("Skins")
+      if not S then return end
+      SkinDropdown(S)
+    end
+
+    if ElvUI and ElvUI[1] then
+      if ElvUI[1].initialized then
+        OnReady()
+      else
+        hooksecurefunc(ElvUI[1], "Initialize", OnReady)
+      end
+    end
   end
 end
 

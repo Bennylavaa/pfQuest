@@ -3362,12 +3362,12 @@ pfDB["quests"]["enUS"] = {
   [684] = {
     ["D"] = "A bounty has been placed on the head of Marez Cowl, a high-level advisor and operative of the Syndicate.  She was last seen within the Syndicate controlled territory of Stromgarde.$B$BBounty may be collected from Captain Nials.$B$BBe warned: Marez is a skilled and cunning Warlock, known for her trafficking with demons.  Extreme caution is advised when hunting her.",
     ["O"] = "Bring Marez\'s head to Captain Nials at Refuge Pointe.",
-    ["T"] = "Wanted!  Marez Cowl",
+    ["T"] = "Wanted! Marez Cowl",
   },
   [685] = {
     ["D"] = "The Stromgarde Militia has placed bounties on the heads of Lord Falconcrest, and his bodyguard Otto.  Falconcrest heads the Syndicate\'s efforts in the Arathi Highlands, and his death would cause a major disruption in those efforts.$B$BHis bodyguard Otto, although not a strategic target, is a fierce opponent and has killed dozens of our defenders.$B$BTheir bounties may be collected from Captain Nials.",
     ["O"] = "Bring Otto\'s Head and Falconcrest\'s Head to Captain Nials at Refuge Pointe.",
-    ["T"] = "Wanted!  Otto and Falconcrest",
+    ["T"] = "Wanted! Otto and Falconcrest",
   },
   [686] = {
     ["D"] = "I do not expect good dwarves like Mrs. Balloo to understand why the travesties of war must be endured for the greater good of our people. The loss of her husband, and the loss of every dwarf that fights in the name of the Alliance, weighs heavy on my soul.$b$bWhile I cannot bring her husband back from the Twisting Nether, I can pay tribute to him.$b$bI am going to commission a memorial to Sully Balloo to be built by Grand Mason Mablesten.$b$bSend word to him now, $c. You shall be custodian of my bidding.",
